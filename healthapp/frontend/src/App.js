@@ -1,21 +1,22 @@
-import React from "react";
-import { BrowserRouter as Router, Route, Routes, Link } from "react-router-dom";
-import Register from "./components/Register";
-import Login from "./components/Login";
+import React,{useEffect} from "react";
+import {AppState} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import AppNavigator from "./AppNavigator";
 
-const App = () => {
-    return (
-        <Router>
-            <nav>
-                <Link to="/register">Register</Link>
-                <Link to="/login">Login</Link>
-            </nav>
-            <Routes>
-                <Route path="/register" element={<Register />} />
-                <Route path="/login" element={<Login />} />
-            </Routes>
-        </Router>
-    );
-};
+export default function App() {
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState) => {
+      if (nextAppState === "active") {
+        await AsyncStorage.setItem("lastActiveTime", Date.now().toString());
+      }
+    };
 
-export default App;
+    AppState.addEventListener("change",handleAppStateChange);
+
+    return () => {
+      AppState.removeEventListener("change",handleAppStateChange);
+    };
+  }, []);
+
+  return <AppNavigator/>;
+}
