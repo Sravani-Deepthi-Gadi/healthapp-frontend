@@ -29,14 +29,15 @@ const MealSummary = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (response.data.meals.length === 0) {
-        Alert.alert("No Meals", "You haven't logged any meals yet.");
+      const { meals } = response.data;
+      if (!meals.length) {
+        Alert.alert("No Meals Found", "You haven't logged any meals yet.");
       }
 
-      setMeals(response.data.meals);
-      calculateTotalNutrition(response.data.meals); 
+      setMeals(meals);
+      if (meals.length) calculateTotalNutrition(meals);
     } catch (error) {
-      console.error("Error fetching meals:", error);
+      console.error("Error fetching meals:", error.response?.data || error.message);
       Alert.alert("Error", "Failed to load meals.");
     } finally {
       setLoading(false);
@@ -44,27 +45,27 @@ const MealSummary = () => {
   };
 
   const calculateTotalNutrition = (meals) => {
-    let totals = { calories: 0, protein: 0, carbs: 0, fats: 0 };
-
-    meals.forEach((meal) => {
-      totals.calories += meal.nutrition?.calories || 0;
-      totals.protein += meal.nutrition?.protein || 0;
-      totals.carbs += meal.nutrition?.carbs || 0;
-      totals.fats += meal.nutrition?.fats || 0;
-    });
+    const totals = meals.reduce(
+      (acc, meal) => ({
+        calories: acc.calories + (meal.nutrition?.calories || 0),
+        protein: acc.protein + (meal.nutrition?.protein || 0),
+        carbs: acc.carbs + (meal.nutrition?.carbs || 0),
+        fats: acc.fats + (meal.nutrition?.fats || 0),
+      }),
+      { calories: 0, protein: 0, carbs: 0, fats: 0 }
+    );
 
     setTotalNutrition(totals);
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return "N/A"; 
-    if (typeof dateString === "string") {
-      return dateString; 
+    if (!dateString) return "N/A";
+    try {
+      return new Date(dateString).toISOString().split("T")[0];
+    } catch {
+      return "Invalid Date";
     }
-    const date = new Date(dateString);
-    return isNaN(date) ? "Invalid Date" : date.toISOString().split("T")[0];
   };
-  
 
   return (
     <View style={{ flex: 1, padding: 20 }}>
