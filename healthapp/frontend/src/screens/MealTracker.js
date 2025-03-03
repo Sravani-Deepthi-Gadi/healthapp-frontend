@@ -1,171 +1,149 @@
 import React, { useEffect, useState } from "react";
-import { 
-  View, Text, Button, ScrollView, Alert, TouchableOpacity, StyleSheet 
+import {
+  View,
+  Text,
+  FlatList,
+  Alert,
+  ActivityIndicator,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker"; 
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Button, Card, Title, Paragraph } from "react-native-paper";
+import MultiSelect from "react-native-multiple-select";
 import axios from "axios";
-import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const MealTracker = () => {
-  const [foodItems, setFoodItems] = useState([]); 
-  const [meals, setMeals] = useState({
-    breakfast: [],
-    lunch: [],
-    snacks: [],
-    dinner: [],
-  });
-  const [selectedMealItem, setSelectedMealItem] = useState({
-    breakfast: "",
-    lunch: "",
-    snacks: "",
-    dinner: "",
-  });
-
-  const navigation = useNavigation(); 
+const MealTracker = ({ navigation }) => {
+  const [foodItems, setFoodItems] = useState([]);
+  const [meals, setMeals] = useState({ breakfast: [], lunch: [], snacks: [], dinner: [] });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const fetchFoodItems = async () => {
+      try {
+        const response = await axios.get("https://flask-s8i3.onrender.com/api/get-food-items");
+        if (response.data.food_items.length === 0) {
+          Alert.alert("⚠️ Warning", "No food items found in the database.");
+        }
+        setFoodItems(response.data.food_items.map((food, index) => ({ id: index.toString(), name: food })));
+      } catch (error) {
+        console.error("Error fetching food items:", error);
+        Alert.alert("⚠️ Error", "Failed to load food items.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchFoodItems();
   }, []);
 
-  const fetchFoodItems = async () => {
-    try {
-      const response = await axios.get("https://flask-s8i3.onrender.com/api/get-food-items");
-  
-      console.log("API Response:", response.data); // Debugging Line
-  
-      if (response.data && Array.isArray(response.data.food_items)) {
-        const formattedItems = response.data.food_items.map((foodName, index) => ({
-          label: foodName,
-          value: String(index), // Assigning index as an ID since API does not provide unique IDs
-        }));
-  
-        console.log("Formatted Food Items:", formattedItems); // Debugging Line
-        setFoodItems(formattedItems);
-      } else {
-        Alert.alert("⚠ Error", "Unexpected API response format.");
-      }
-    } catch (error) {
-      Alert.alert("⚠ Error", "Failed to load food items.");
-      console.error("API fetch error:", error);
-    }
-  };
-  
-  
-  const addFoodToMeal = (mealType) => {
-    const selectedFoodId = selectedMealItem[mealType];
-  
-    if (!selectedFoodId) {
-      Alert.alert("⚠ Select a food item", "Please select a food item before adding.");
-      return;
-    }
-  
-    const selectedFood = foodItems.find(item => item.value === selectedFoodId);
-    if (!selectedFood) return;
-  
-    if (!meals[mealType].some(food => food.id === selectedFood.value)) {
-      setMeals((prevMeals) => ({
-        ...prevMeals,
-        [mealType]: [...prevMeals[mealType], { id: selectedFood.value, name: selectedFood.label }],
-      }));
-    }
-  };
-  
-  const removeFoodFromMeal = (mealType, foodId) => {
+  const updateMeal = (mealType, selectedItems) => {
     setMeals((prevMeals) => ({
       ...prevMeals,
-      [mealType]: prevMeals[mealType].filter((item) => item.id !== foodId),
+      [mealType]: selectedItems.map((id) => foodItems.find((item) => item.id === id)?.name || ""),
     }));
   };
-  
+
   const logMeal = async () => {
     try {
       const token = await AsyncStorage.getItem("authToken");
       if (!token) {
-        Alert.alert("⚠ Login Required", "Please log in first.");
-        return;
-      }
-
-      const hasMeals = Object.values(meals).some((meal) => meal.length > 0);
-      if (!hasMeals) {
-        Alert.alert("⚠ No Meals Selected", "Please add at least one meal before logging.");
+        Alert.alert("⚠️ Error", "You must be logged in to log meals.");
         return;
       }
 
       await axios.post(
         "https://flask-s8i3.onrender.com/api/log-meal",
-        { meals: meals }, 
-        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+        { meals },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       Alert.alert("✅ Success", "Meal logged successfully!");
-      navigation.replace("MealSummary"); 
-
+      navigation.navigate("MealSummary");
     } catch (error) {
-      console.error("Error logging meal:", error.response?.data || error);
-      Alert.alert("⚠ Error", error.response?.data?.error || "Failed to log meal.");
+      console.error("Error logging meal:", error);
+      Alert.alert("⚠️ Error", "Failed to log meal.");
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>🍽 Meal Tracker</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
+    >
+      <Title style={styles.header}>🍽 Meal Tracker</Title>
+      {loading && <ActivityIndicator size="large" color="#4CAF50" />}
 
-      {Object.keys(meals).map((mealType) => (
-        <View key={mealType} style={styles.mealContainer}>
-          <Text style={styles.mealTitle}>{mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Text>
+      <FlatList
+        data={Object.keys(meals)}
+        keyExtractor={(item) => item}
+        renderItem={({ item: mealType }) => (
+          <Card style={styles.mealContainer}>
+            <Card.Content>
+              <Title style={styles.mealTitle}>{mealType.charAt(0).toUpperCase() + mealType.slice(1)}</Title>
+              <MultiSelect
+                items={foodItems}
+                uniqueKey="id"
+                onSelectedItemsChange={(selectedItems) => updateMeal(mealType, selectedItems)}
+                selectedItems={meals[mealType].map((food) => foodItems.find((item) => item.name === food)?.id || "")}
+                selectText="Select food items"
+                searchInputPlaceholderText="Search food..."
+                tagRemoveIconColor="red"
+                tagBorderColor="#CCC"
+                tagTextColor="#000"
+                selectedItemTextColor="#4CAF50"
+                selectedItemIconColor="#4CAF50"
+                itemTextColor="#333"
+                displayKey="name"
+                submitButtonText="Confirm"
+                nestedScrollEnabled={true}
+                styleDropdownMenu={styles.dropdownMenu}
+              />
+            </Card.Content>
+          </Card>
+        )}
+        contentContainerStyle={styles.listContainer}
+      />
 
-          <Picker
-            selectedValue={selectedMealItem[mealType]}
-            onValueChange={(itemValue) =>
-              setSelectedMealItem({ ...selectedMealItem, [mealType]: itemValue })
-            }
-            style={styles.picker}
-          >
-            <Picker.Item label="Select a food item" value="" />
-            {foodItems.map((item) => (
-              <Picker.Item key={item.value} label={item.label} value={item.value} />
-            ))}
-          </Picker>
-
-          <Button title="➕ Add to Meal" onPress={() => addFoodToMeal(mealType)} />
-
-          {meals[mealType].length > 0 ? (
-            <View style={styles.selectedItemsContainer}>
-              {meals[mealType].map((food) => (
-                <View key={food.id} style={styles.selectedItem}>
-                  <Text>{food.name}</Text>
-                  <TouchableOpacity onPress={() => removeFoodFromMeal(mealType, food.id)}>
-                    <Text style={styles.removeText}>❌</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.noItemsText}>No items selected</Text>
-          )}
-
-        </View>
-      ))}
-
-      <View style={styles.logMealButtonContainer}>
-        <Button title="✅ Log Meal" onPress={logMeal} />
-      </View>
-    </ScrollView>
+      <Button mode="contained" onPress={logMeal} style={styles.button}>
+        Log Meal
+      </Button>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 20, paddingBottom: 50 },
-  title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, textAlign: "center" },
-  mealContainer: { marginBottom: 20, padding: 10, backgroundColor: "#f8f8f8", borderRadius: 10, borderWidth: 1, borderColor: "#ddd" },
-  mealTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 5 },
-  picker: { height: 50, backgroundColor: "#f2f2f2", marginBottom: 10 },
-  selectedItemsContainer: { marginTop: 10 },
-  selectedItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#e1f5fe", padding: 5, marginVertical: 2, borderRadius: 5 },
-  removeText: { color: "red", fontWeight: "bold", paddingHorizontal: 5 },
-  noItemsText: { textAlign: "center", color: "#666", fontStyle: "italic", marginTop: 5 },
-  logMealButtonContainer: { marginTop: 20 },
+  container: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: "#F5F5F5",
+  },
+  header: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  mealContainer: {
+    marginBottom: 15,
+    borderRadius: 10,
+    elevation: 3,
+  },
+  mealTitle: {
+    fontSize: 18,
+    marginBottom: 5,
+    fontWeight: "bold",
+    color: "#4CAF50",
+  },
+  listContainer: {
+    paddingBottom: 20,
+  },
+  button: {
+    marginTop: 10,
+    backgroundColor: "#4CAF50",
+  },
 });
 
 export default MealTracker;
